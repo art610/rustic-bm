@@ -601,7 +601,7 @@ show_backup_info() {
 
         echo ""
         echo "Статистика репозитория:"
-        rustic stats --repository "$RUSTIC_REPO" --password-file "$password_file"
+        rustic repoinfo --repository "$RUSTIC_REPO" --password-file "$password_file"
     else
         echo "Rustic недоступен или отсутствует пароль"
     fi

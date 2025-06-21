@@ -5,7 +5,7 @@ Autonomous backup manager with multiple repository support, based on [rustic](ht
 ## ✨ Features
 
 - 🔄 **Incremental backups** with deduplication and compression
-- 🗄️ **Multiple repositories**: local, S3, SSH/SFTP servers
+- 🗄️ **Multiple repositories**: local, SSH/SFTP servers
 - ⚡ **Parallel uploads** to multiple repositories simultaneously
 - 🔒 **Client-side encryption** (AES-256)
 - ⏰ **Automation** via systemd with flexible scheduling
@@ -23,6 +23,7 @@ backup-manager/
 ├── ⚙️ config.json                # Configuration
 ├── 🛠️ setup_systemd.sh           # Auto-start setup
 ├── 📥 download_rustic.sh          # Binary downloader
+
 ├── 🔄 update_rustic.sh           # Version updater
 ├── 🧰 init_recovery.sh           # Recovery kit preparation
 ├── 📋 systemd_helper.sh          # Quick systemd commands
@@ -56,7 +57,7 @@ chmod +x ./*.sh
 ### 2. Download and Extract Rustic
 
 ```bash
-# Auto-download for all platforms
+# For local/SFTP backups (standard version)
 ./download_rustic.sh
 
 # Extract downloaded archives
@@ -118,16 +119,6 @@ nano config.json
       "path": "$HOME/rustic-backup",
       "description": "Local storage"
     },
-    "s3_aws": {
-      "type": "s3",
-      "enabled": false,
-      "s3_region": "us-east-1",
-      "s3_service_name": "s3",
-      "s3_endpoint_url": "",
-      "s3_bucket": "my-backup-bucket",
-      "prefix": "rustic-backups/",
-      "description": "AWS S3"
-    },
     "ssh_server": {
       "type": "sftp",
       "enabled": false,
@@ -143,7 +134,7 @@ nano config.json
   "multi_repo": {
     "enabled": false,
     "sync_all": true,
-    "repositories": ["local", "s3_aws"],
+    "repositories": ["local"],
     "require_all_success": false,
     "parallel_uploads": true
   },
@@ -189,48 +180,7 @@ nano config.json
 }
 ```
 
-### ☁️ S3-Compatible Storage
 
-**AWS S3:**
-```json
-{
-  "type": "s3",
-  "s3_region": "us-east-1",
-  "s3_endpoint_url": "",
-  "s3_bucket": "my-backup-bucket"
-}
-```
-
-**MinIO:**
-```json
-{
-  "type": "s3",
-  "s3_region": "us-east-1",
-  "s3_endpoint_url": "https://minio.example.com",
-  "s3_bucket": "backups"
-}
-```
-
-**Yandex Object Storage:**
-```json
-{
-  "type": "s3",
-  "s3_region": "ru-central1",
-  "s3_endpoint_url": "https://storage.yandexcloud.net",
-  "s3_bucket": "my-backup-bucket"
-}
-```
-
-### 🔑 S3 Credentials Setup
-
-```bash
-# Add to ~/.bashrc:
-export AWS_ACCESS_KEY_ID="your_access_key"
-export AWS_SECRET_ACCESS_KEY="your_secret_key"
-
-# Reload environment:
-source ~/.bashrc
-```
 
 ### 🔐 SSH/SFTP Servers
 ```json
@@ -359,12 +309,12 @@ After extraction, rustic will be automatically installed to `~/.local/bin/` when
 }
 ```
 
-### Multi-Repository (Local + S3)
+### Multi-Repository (Local + SFTP)
 ```json
 {
   "multi_repo": {
     "enabled": true,
-    "repositories": ["local", "s3_aws"],
+    "repositories": ["local", "ssh_server"],
     "parallel_uploads": true
   }
 }
@@ -388,15 +338,7 @@ sudo apt update
 sudo apt install libfuse2
 ```
 
-### S3 Issues
-```bash
-# Check environment variables
-echo $AWS_ACCESS_KEY_ID
-echo $AWS_SECRET_ACCESS_KEY
 
-# Test connection
-./backups.sh → "Repository Management" → "Test connections"
-```
 
 ### SSH Issues
 ```bash
@@ -450,7 +392,7 @@ rustic check --repository /path/to/repo --password-file .credentials/repo.passwo
 - **OS**: Linux, macOS, Windows
 - **Architectures**: x86_64, ARM64
 - **Formats**: restic compatibility
-- **Cloud**: AWS S3, MinIO, Yandex, DigitalOcean Spaces
+- **Remote**: SSH/SFTP servers with authentication
 
 ### Compression Levels
 
@@ -467,8 +409,7 @@ The `compression` parameter accepts values:
 - `jq` - JSON processing
 - `gettext-base` (envsubst) - variable substitution
 
-### For S3
-- Environment variables: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+
 
 ### For SSH
 - SSH client

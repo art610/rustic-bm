@@ -47,16 +47,6 @@ create_default_config() {
       "enabled": true,
       "path": "$HOME/rustic-backup",
       "description": "Локальное хранилище"
-    },
-    "s3_aws": {
-      "type": "s3",
-      "enabled": false,
-      "s3_region": "us-east-1",
-      "s3_service_name": "s3",
-      "s3_endpoint_url": "",
-      "s3_bucket": "my-backup-bucket",
-      "prefix": "rustic-backups/",
-      "description": "AWS S3"
     }
   },
   "multi_repo": {
@@ -249,22 +239,47 @@ validate_config() {
 }
 
 generate_exclude_file() {
-    local exclude_file="$SCRIPT_DIR/rustic-exclude.txt"
+    local exclude_file="$SCRIPT_DIR/.rusticignore"
+
+    # Проверяем, включены ли исключения
+    if [ "${DISABLE_EXCLUSIONS:-false}" = "true" ]; then
+        log_message "DEBUG: Исключения отключены (DISABLE_EXCLUSIONS=true)"
+        > "$exclude_file"  # Создаем пустой файл
+        echo "$exclude_file"
+        return
+    fi
+
+    # Создаем файл исключений в формате .gitignore
     > "$exclude_file"
 
-    # Add patterns as globs
+    # Добавляем паттерны
     echo "$CONFIG_JSON" | jq -r '.exclude.patterns[]' | while read -r pattern; do
-        echo "**/$pattern" >> "$exclude_file"
+        if [ -n "$pattern" ]; then
+            echo "$pattern" >> "$exclude_file"
+            log_message "DEBUG: Добавлен паттерн исключения: $pattern"
+        fi
     done
 
-    # Add directories
+    # Добавляем директории
     echo "$CONFIG_JSON" | jq -r '.exclude.directories[]' | while read -r dir; do
-        echo "**/$dir/**" >> "$exclude_file"
+        if [ -n "$dir" ]; then
+            echo "$dir/" >> "$exclude_file"
+            log_message "DEBUG: Исключена директория: $dir/"
+        fi
     done
 
-    # Add files
+    # Добавляем файлы
     echo "$CONFIG_JSON" | jq -r '.exclude.files[]' | while read -r file; do
-        echo "**/$file" >> "$exclude_file"
+        if [ -n "$file" ]; then
+            echo "$file" >> "$exclude_file"
+            log_message "DEBUG: Исключен файл: $file"
+        fi
+    done
+
+    log_message "DEBUG: Создан файл исключений: $exclude_file"
+    log_message "DEBUG: Содержимое файла исключений:"
+    cat "$exclude_file" | while read -r line; do
+        log_message "  $line"
     done
 
     echo "$exclude_file"
@@ -304,30 +319,8 @@ show_config_summary() {
 # --- НОВЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С РЕПОЗИТОРИЯМИ ---
 
 # Функции проверки переменных окружения
-check_s3_environment() {
-    local missing_vars=()
 
-    if [ -z "$AWS_ACCESS_KEY_ID" ]; then
-        missing_vars+=("AWS_ACCESS_KEY_ID")
-    fi
 
-    if [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
-        missing_vars+=("AWS_SECRET_ACCESS_KEY")
-    fi
-
-    if [ ${#missing_vars[@]} -gt 0 ]; then
-        log_message "ОШИБКА: Отсутствуют переменные окружения для S3: ${missing_vars[*]}"
-        log_message "Добавьте в ~/.bashrc:"
-        for var in "${missing_vars[@]}"; do
-            echo "export $var=\"your_value_here\""
-        done
-        return 1
-    fi
-
-    return 0
-}
-
-# Функции работы с репозиториями
 get_repo_url() {
     local repo_name="$1"
     local config_json="$2"
@@ -339,11 +332,7 @@ get_repo_url() {
             local path=$(echo "$config_json" | jq -r ".repositories.$repo_name.path")
             echo "$path"
             ;;
-        "s3")
-            local bucket=$(echo "$config_json" | jq -r ".repositories.$repo_name.s3_bucket")
-            local prefix=$(echo "$config_json" | jq -r ".repositories.$repo_name.prefix // \"\"")
-            echo "s3:$bucket/$prefix"
-            ;;
+
         "sftp")
             local host=$(echo "$config_json" | jq -r ".repositories.$repo_name.host")
             local port=$(echo "$config_json" | jq -r ".repositories.$repo_name.port // 22")
@@ -365,24 +354,6 @@ setup_repo_credentials() {
     local repo_type=$(echo "$config_json" | jq -r ".repositories.$repo_name.type")
 
     case "$repo_type" in
-        "s3")
-            # Проверяем наличие переменных окружения
-            if ! check_s3_environment; then
-                return 1
-            fi
-
-            local region=$(echo "$config_json" | jq -r ".repositories.$repo_name.s3_region")
-            local endpoint_url=$(echo "$config_json" | jq -r ".repositories.$repo_name.s3_endpoint_url // \"\"")
-
-            export AWS_DEFAULT_REGION="$region"
-            export AWS_REGION="$region"
-
-            if [ -n "$endpoint_url" ] && [ "$endpoint_url" != "null" ] && [ "$endpoint_url" != "" ]; then
-                export AWS_ENDPOINT_URL="$endpoint_url"
-            else
-                unset AWS_ENDPOINT_URL
-            fi
-            ;;
         "sftp")
             local ssh_key=$(echo "$config_json" | jq -r ".repositories.$repo_name.ssh_key // \"\"")
 
@@ -392,6 +363,8 @@ setup_repo_credentials() {
             ;;
     esac
 }
+
+
 
 get_password_file() {
     local repo_name="$1"
@@ -443,18 +416,20 @@ init_repository() {
 
     setup_repo_credentials "$repo_name" "$config_json"
 
-    log_message "Инициализация репозитория '$repo_name' с шифрованием '$RUSTIC_ENCRYPTION'..."
+    log_message "Инициализация репозитория '$repo_name'..."
+    log_message "DEBUG: Repository URL: $repo_url"
 
     if rustic init \
         --repository "$repo_url" \
-        --password-file "$password_file"; then
-
+        --password-file "$password_file" \
+        2>&1 | tee -a "$LOG_FILE"; then
         log_message "✅ Репозиторий '$repo_name' инициализирован"
         return 0
     else
         log_message "❌ Ошибка инициализации репозитория '$repo_name'"
-        return 1
     fi
+
+    return 1
 }
 
 backup_to_repository() {
@@ -481,32 +456,51 @@ backup_to_repository() {
         fi
     fi
 
-    # Выполняем бэкап с всеми параметрами из конфига
+    # Отладочная информация
+    log_message "DEBUG: Начинаем бэкап директорий: ${changed_dirs[*]}"
+    local exclude_file=$(generate_exclude_file)
+    log_message "DEBUG: Используем файл исключений: $exclude_file"
+
+    # Проверяем, что будет включено в бэкап
+    log_message "DEBUG: Проверка файлов в директориях:"
+    for dir in "${changed_dirs[@]}"; do
+        local file_count=$(find "$dir" -type f 2>/dev/null | wc -l)
+        local total_size=$(du -sh "$dir" 2>/dev/null | cut -f1)
+        log_message "  $dir: $file_count файлов, размер: $total_size"
+        # Показываем первые несколько файлов
+        log_message "  Примеры файлов:"
+        find "$dir" -type f 2>/dev/null | head -5 | while read -r file; do
+            log_message "    - $file"
+        done
+    done
+
+    # Выполняем бэкап
     if rustic backup "${changed_dirs[@]}" \
-        --repository "$repo_url" \
-        --password-file "$password_file" \
-        --tag "auto-$timestamp" \
-        --tag "repo-$repo_name" \
-        --iglob-file "$EXCLUDE_FILE" \
-        --set-compression "$RUSTIC_COMPRESSION"; then
-
-        log_message "✅ Бэкап в '$repo_name' успешно завершен"
-
-        # Ротация с использованием потоков
-        log_message "Выполнение ротации в репозитории '$repo_name'..."
-        rustic forget \
             --repository "$repo_url" \
             --password-file "$password_file" \
-            --keep-daily "$KEEP_DAILY" \
-            --keep-weekly "$KEEP_WEEKLY" \
-            --keep-monthly "$KEEP_MONTHLY" \
-            --keep-yearly "$KEEP_YEARLY" \
-            --prune
+            --tag "auto-$timestamp" \
+            --tag "repo-$repo_name" \
+            --custom-ignorefile "$exclude_file" \
+            --set-compression "$RUSTIC_COMPRESSION"; then
 
-        return 0
-    else
-        log_message "❌ Ошибка бэкапа в репозиторий '$repo_name'"
-        return 1
+            log_message "✅ Бэкап в '$repo_name' успешно завершен"
+
+            # Ротация
+            log_message "Выполнение ротации в репозитории '$repo_name'..."
+            rustic forget \
+                --repository "$repo_url" \
+                --password-file "$password_file" \
+                --keep-daily "$KEEP_DAILY" \
+                --keep-weekly "$KEEP_WEEKLY" \
+                --keep-monthly "$KEEP_MONTHLY" \
+                --keep-yearly "$KEEP_YEARLY" \
+                --prune
+
+            return 0
+        else
+            log_message "❌ Ошибка бэкапа в репозиторий '$repo_name'"
+            return 1
+        fi
     fi
 }
 
@@ -621,9 +615,11 @@ interactive_restore() {
     # Определяем password file
     local password_file
     if echo "$CONFIG_JSON" | jq -e '.repositories' >/dev/null 2>&1; then
+        # Новая структура
         local primary_repo=$(get_primary_repository "$CONFIG_JSON")
         password_file=$(get_password_file "$primary_repo")
     else
+        # Старая структура
         password_file="$SCRIPT_DIR/.password"
     fi
 
@@ -641,23 +637,92 @@ interactive_restore() {
 
     echo ""
     read -p "ID снапшота (или 'latest' для последнего): " snapshot_id
+
+    # Если snapshot_id пустой, используем latest
+    if [ -z "$snapshot_id" ]; then
+        snapshot_id="latest"
+    fi
+
+    # Показываем содержимое снапшота
+    echo ""
+    echo "📋 Содержимое снапшота '$snapshot_id':"
+    echo "----------------------------------------"
+    if rustic ls -l --repository "$RUSTIC_REPO" --password-file "$password_file" "$snapshot_id" 2>/dev/null; then
+        echo "----------------------------------------"
+    else
+        echo "⚠️  Не удалось показать содержимое снапшота"
+    fi
+
+    echo ""
+    echo "💡 Подсказка: вы можете указать путь внутри снапшота после двоеточия"
+    echo "   Например: $snapshot_id:/home/user/.config"
+    echo ""
+    read -p "Путь в снапшоте (оставьте пустым для восстановления всего) []: " snapshot_path
+
+    # Формируем полный путь снапшота
+    local full_snapshot_path="$snapshot_id"
+    if [ -n "$snapshot_path" ]; then
+        # Убираем ведущий слэш если есть
+        snapshot_path="${snapshot_path#/}"
+        full_snapshot_path="$snapshot_id:/$snapshot_path"
+    fi
+
     read -p "Путь для восстановления [./restored]: " restore_path
 
     if [ -z "$restore_path" ]; then
         restore_path="./restored"
     fi
 
+    # Создаем директорию для восстановления
     mkdir -p "$restore_path"
 
-    echo "Восстановление снапшота '$snapshot_id' в '$restore_path'..."
+    echo ""
+    echo "🔄 Восстановление '$full_snapshot_path' в '$restore_path'..."
+    echo ""
 
-    if rustic restore "$snapshot_id" \
+    if rustic restore \
         --repository "$RUSTIC_REPO" \
         --password-file "$password_file" \
-        --target "$restore_path"; then
+        "$full_snapshot_path" "$restore_path"; then
 
+        echo ""
         echo "✅ Восстановление завершено успешно!"
         echo "📁 Данные восстановлены в: $(realpath "$restore_path")"
+
+        # Показываем что было восстановлено
+        echo ""
+        echo "📊 Статистика восстановления:"
+        echo "----------------------------------------"
+        local file_count=$(find "$restore_path" -type f 2>/dev/null | wc -l)
+        local dir_count=$(find "$restore_path" -type d 2>/dev/null | wc -l)
+        local total_size=$(du -sh "$restore_path" 2>/dev/null | cut -f1)
+
+        echo "  Файлов: $file_count"
+        echo "  Директорий: $dir_count"
+        echo "  Общий размер: $total_size"
+        echo ""
+
+        # Показываем структуру восстановленных файлов
+        echo "📂 Структура восстановленных данных:"
+        echo "----------------------------------------"
+        if command -v tree >/dev/null 2>&1; then
+            tree -L 3 "$restore_path" | head -20
+        else
+            ls -la "$restore_path" | head -20
+        fi
+
+        if [ $file_count -eq 0 ]; then
+            echo ""
+            echo "⚠️  ВНИМАНИЕ: Файлы не найдены в восстановленной директории!"
+            echo "   Возможные причины:"
+            echo "   1. Снапшот содержит только пустые директории"
+            echo "   2. Файлы находятся глубже в структуре директорий"
+            echo "   3. Указан неверный путь в снапшоте"
+            echo ""
+            echo "   Попробуйте:"
+            echo "   - Проверить полную структуру: find '$restore_path' -type f"
+            echo "   - Восстановить с другим путем в снапшоте"
+        fi
     else
         echo "❌ Ошибка при восстановлении!"
         return 1
@@ -673,8 +738,7 @@ manage_repositories() {
         echo "=========================================="
         echo "1) Показать статус всех репозиториев"
         echo "2) Тестировать подключения"
-        echo "3) Настроить S3 репозиторий"
-        echo "4) Включить/отключить репозиторий"
+        echo "3) Включить/отключить репозиторий"
         echo "0) Назад"
         echo "=========================================="
 
@@ -683,8 +747,7 @@ manage_repositories() {
         case $choice in
             1) show_repositories_status ;;
             2) test_all_repositories ;;
-            3) configure_s3_repository ;;
-            4) toggle_repository ;;
+            3) toggle_repository ;;
             0) return ;;
             *) echo "❌ Неверный выбор" ;;
         esac
@@ -713,9 +776,7 @@ test_all_repositories() {
     fi
 }
 
-configure_s3_repository() {
-    echo "Функция настройки S3 репозитория будет добавлена в следующей версии"
-}
+
 
 toggle_repository() {
     echo "Функция включения/отключения репозитория будет добавлена в следующей версии"
@@ -926,6 +987,15 @@ run_backup() {
 
     show_config_summary
 
+    # Временно показываем отладочную информацию
+    log_message "DEBUG: Режим отладки включен для диагностики проблем с бэкапом"
+
+    # Временно отключаем исключения для тестирования
+    if [ "${TEST_WITHOUT_EXCLUSIONS:-false}" = "true" ]; then
+        log_message "⚠️  ВНИМАНИЕ: Бэкап выполняется БЕЗ исключений (TEST_WITHOUT_EXCLUSIONS=true)"
+        export DISABLE_EXCLUSIONS=true
+    fi
+
     # Проверяем и устанавливаем rustic
     if ! check_rustic_installed; then
         if ! install_rustic; then
@@ -935,6 +1005,7 @@ run_backup() {
     fi
 
     # Генерируем файл исключений
+    log_message "DEBUG: Подготовка файла исключений..."
     EXCLUDE_FILE=$(generate_exclude_file)
 
     # Создаем необходимые директории
@@ -1069,11 +1140,16 @@ run_backup() {
             fi
 
             # Выполняем бэкап (старая логика)
+            # Отладочная информация для старой структуры
+            log_message "DEBUG: Старая структура - бэкап директорий: ${CHANGED_DIRS[*]}"
+            local exclude_file=$(generate_exclude_file)
+            log_message "DEBUG: Используем файл исключений: $exclude_file"
+
             rustic backup "${CHANGED_DIRS[@]}" \
                 --repository "$RUSTIC_REPO" \
                 --password-file "$password_file" \
                 --tag "auto-$TIMESTAMP" \
-                --iglob-file "$EXCLUDE_FILE" \
+                --custom-ignorefile "$exclude_file" \
                 --set-compression "$RUSTIC_COMPRESSION"
 
             if [ $? -eq 0 ]; then

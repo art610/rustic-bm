@@ -4,23 +4,6 @@
 
 echo "=== ПРОВЕРКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ ==="
 
-# Проверка S3 переменных
-echo ""
-echo "S3 Credentials:"
-if [ -n "$AWS_ACCESS_KEY_ID" ]; then
-    echo "  ✅ AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:0:8}***"
-else
-    echo "  ❌ AWS_ACCESS_KEY_ID не установлен"
-    echo "     Добавьте в ~/.bashrc: export AWS_ACCESS_KEY_ID=\"your_key\""
-fi
-
-if [ -n "$AWS_SECRET_ACCESS_KEY" ]; then
-    echo "  ✅ AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:0:8}***"
-else
-    echo "  ❌ AWS_SECRET_ACCESS_KEY не установлен"
-    echo "     Добавьте в ~/.bashrc: export AWS_SECRET_ACCESS_KEY=\"your_secret\""
-fi
-
 # Проверка SSH ключей
 echo ""
 echo "SSH Keys:"

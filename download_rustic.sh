@@ -6,7 +6,7 @@
 VERSION="v0.9.5"
 BASE_URL="https://github.com/rustic-rs/rustic/releases/download/$VERSION"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALLERS_DIR="$SCRIPT_DIR/installers1"
+INSTALLERS_DIR="$SCRIPT_DIR/installers"
 
 echo "🚀 Скачивание Rustic $VERSION для всех платформ..."
 

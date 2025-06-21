@@ -84,6 +84,7 @@ nano config.json
 ### 4. First Backup
 
 ```bash
+
 ./backups.sh backup
 ```
 

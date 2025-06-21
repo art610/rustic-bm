@@ -48,7 +48,7 @@ backup-manager/
 ### 1. Clone and Setup
 
 ```bash
-git clone <your-repo>
+git clone https://github.com/art610/rustic-bm.git
 cd backup-manager
 chmod +x ./*.sh
 ```

@@ -768,11 +768,32 @@ install_rustic() {
         return 1
     fi
 
+    # Check for extracted binary first
     local installer_path="$INSTALLERS_DIR/rustic-$arch"
 
+    # If not found, look for archive and extract
     if [ ! -f "$installer_path" ]; then
-        log_message "ОШИБКА: Установочник не найден: $installer_path"
-        return 1
+        local archive_path="$INSTALLERS_DIR/rustic-v0.9.5-$arch.tar.gz"
+
+        if [ -f "$archive_path" ]; then
+            log_message "Извлечение rustic из архива..."
+            local temp_dir=$(mktemp -d)
+            tar -xzf "$archive_path" -C "$temp_dir"
+
+            if [ -f "$temp_dir/rustic" ]; then
+                cp "$temp_dir/rustic" "$installer_path"
+                chmod +x "$installer_path"
+                rm -rf "$temp_dir"
+            else
+                log_message "ОШИБКА: Не найден бинарник в архиве"
+                rm -rf "$temp_dir"
+                return 1
+            fi
+        else
+            log_message "ОШИБКА: Установочник не найден: $installer_path"
+            log_message "Запустите: ./download_rustic.sh"
+            return 1
+        fi
     fi
 
     log_message "Устанавливаем rustic из локального файла..."

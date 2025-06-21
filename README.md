@@ -172,9 +172,8 @@ nano config.json
     "keep_yearly": 2
   },
   "rustic": {
-    "compression": "auto",
-    "encryption": "repokey",
-    "threads": 4
+    "compression": "3",
+    "encryption": "repokey"
   }
 }
 ```
@@ -452,6 +451,14 @@ rustic check --repository /path/to/repo --password-file .credentials/repo.passwo
 - **Architectures**: x86_64, ARM64
 - **Formats**: restic compatibility
 - **Cloud**: AWS S3, MinIO, Yandex, DigitalOcean Spaces
+
+### Compression Levels
+
+The `compression` parameter accepts values:
+- `0` - no compression
+- `1-22` - zstd compression levels (higher = better compression, slower)
+- `-1` to `-7` - fast compression levels
+- Default: `3` (good balance of speed and compression)
 
 ## 📝 Requirements
 

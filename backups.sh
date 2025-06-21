@@ -132,9 +132,8 @@ create_default_config() {
     "enable_checksum_verification": true
   },
   "rustic": {
-    "compression": "auto",
-    "encryption": "repokey",
-    "threads": 4
+    "compression": "3",
+    "encryption": "repokey"
   },
   "notifications": {
     "enable_desktop_notifications": true,
@@ -188,9 +187,13 @@ load_config() {
     ENABLE_SIZE_CHECK=$(echo "$CONFIG_JSON" | jq -r '.safety.enable_size_check')
     ENABLE_CHECKSUM_VERIFICATION=$(echo "$CONFIG_JSON" | jq -r '.safety.enable_checksum_verification')
 
-    RUSTIC_THREADS=$(echo "$CONFIG_JSON" | jq -r '.rustic.threads')
     RUSTIC_COMPRESSION=$(echo "$CONFIG_JSON" | jq -r '.rustic.compression')
     RUSTIC_ENCRYPTION=$(echo "$CONFIG_JSON" | jq -r '.rustic.encryption // "repokey"')
+
+    # Преобразуем "auto" в реальный уровень сжатия
+    if [ "$RUSTIC_COMPRESSION" = "auto" ]; then
+        RUSTIC_COMPRESSION="3"  # Уровень по умолчанию (баланс скорости и сжатия)
+    fi
 
     PARALLEL_UPLOADS=$(echo "$CONFIG_JSON" | jq -r '.multi_repo.parallel_uploads // false')
 
@@ -236,11 +239,6 @@ validate_config() {
         errors=$((errors + 1))
     fi
 
-    if ! [[ "$RUSTIC_THREADS" =~ ^[0-9]+$ ]] || [ "$RUSTIC_THREADS" -lt 1 ]; then
-        echo "❌ Некорректное значение threads: $RUSTIC_THREADS"
-        errors=$((errors + 1))
-    fi
-
     if [ $errors -gt 0 ]; then
         echo "❌ Обнаружено $errors ошибок в конфигурации"
         return 1
@@ -252,23 +250,21 @@ validate_config() {
 
 generate_exclude_file() {
     local exclude_file="$SCRIPT_DIR/rustic-exclude.txt"
-
-    # Очищаем файл
     > "$exclude_file"
 
-    # Добавляем паттерны
-    echo "$CONFIG_JSON" | jq -r '.exclude.patterns[]' >> "$exclude_file"
-
-    # Добавляем директории с префиксом
-    echo "$CONFIG_JSON" | jq -r '.exclude.directories[]' | while read -r dir; do
-        echo "*/$dir/*" >> "$exclude_file"
-        echo "$dir/*" >> "$exclude_file"
+    # Add patterns as globs
+    echo "$CONFIG_JSON" | jq -r '.exclude.patterns[]' | while read -r pattern; do
+        echo "**/$pattern" >> "$exclude_file"
     done
 
-    # Добавляем файлы
+    # Add directories
+    echo "$CONFIG_JSON" | jq -r '.exclude.directories[]' | while read -r dir; do
+        echo "**/$dir/**" >> "$exclude_file"
+    done
+
+    # Add files
     echo "$CONFIG_JSON" | jq -r '.exclude.files[]' | while read -r file; do
-        echo "*/$file" >> "$exclude_file"
-        echo "$file" >> "$exclude_file"
+        echo "**/$file" >> "$exclude_file"
     done
 
     echo "$exclude_file"
@@ -291,7 +287,6 @@ show_config_summary() {
         echo "  Размер репозитория: $repo_size"
     fi
     echo "Хранение: $KEEP_DAILY дней, $KEEP_WEEKLY недель, $KEEP_MONTHLY месяцев, $KEEP_YEARLY лет"
-    echo "Потоков: $RUSTIC_THREADS"
     echo "Сжатие: $RUSTIC_COMPRESSION"
     echo "Шифрование: $RUSTIC_ENCRYPTION"
 
@@ -477,7 +472,7 @@ backup_to_repository() {
 
     setup_repo_credentials "$repo_name" "$config_json"
 
-    log_message "Создание бэкапа в репозиторий '$repo_name' для ${#changed_dirs[@]} директорий (потоков: $RUSTIC_THREADS)"
+    log_message "Создание бэкапа в репозиторий '$repo_name' для ${#changed_dirs[@]} директорий"
 
     # Проверяем существование репозитория
     if ! rustic snapshots --repository "$repo_url" --password-file "$password_file" >/dev/null 2>&1; then
@@ -492,9 +487,8 @@ backup_to_repository() {
         --password-file "$password_file" \
         --tag "auto-$timestamp" \
         --tag "repo-$repo_name" \
-        --exclude-file "$EXCLUDE_FILE" \
-        --compression "$RUSTIC_COMPRESSION" \
-        --threads "$RUSTIC_THREADS"; then
+        --iglob-file "$EXCLUDE_FILE" \
+        --set-compression "$RUSTIC_COMPRESSION"; then
 
         log_message "✅ Бэкап в '$repo_name' успешно завершен"
 
@@ -507,7 +501,6 @@ backup_to_repository() {
             --keep-weekly "$KEEP_WEEKLY" \
             --keep-monthly "$KEEP_MONTHLY" \
             --keep-yearly "$KEEP_YEARLY" \
-            --threads "$RUSTIC_THREADS" \
             --prune
 
         return 0
@@ -1080,8 +1073,8 @@ run_backup() {
                 --repository "$RUSTIC_REPO" \
                 --password-file "$password_file" \
                 --tag "auto-$TIMESTAMP" \
-                --exclude-file "$EXCLUDE_FILE" \
-                --compression "$RUSTIC_COMPRESSION"
+                --iglob-file "$EXCLUDE_FILE" \
+                --set-compression "$RUSTIC_COMPRESSION"
 
             if [ $? -eq 0 ]; then
                 log_message "Бэкап успешно завершен"

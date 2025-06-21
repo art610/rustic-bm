@@ -1,0 +1,5 @@
+installers/
+recovery-kit/
+config.json
+.password
+.credentials/

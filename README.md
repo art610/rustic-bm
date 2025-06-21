@@ -50,7 +50,7 @@ backup-manager/
 ```bash
 git clone <your-repo>
 cd backup-manager
-chmod +x *.sh
+chmod +x ./*.sh
 ```
 
 ### 2. Download and Extract Rustic

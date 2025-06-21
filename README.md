@@ -73,7 +73,14 @@ tar -xzf rustic-v0.9.5-x86_64-unknown-linux-gnu.tar.gz
 
 ### 3. Initial Configuration
 
+
+
 ```bash
+# dependency
+sudo apt update
+sudo apt install libfuse2
+# download rustic
+./download_rustic.sh
 # Create default configuration
 ./backups.sh
 
@@ -84,7 +91,7 @@ nano config.json
 ### 4. First Backup
 
 ```bash
-
+# run
 ./backups.sh backup
 ```
 
@@ -374,6 +381,13 @@ After extraction, rustic will be automatically installed to `~/.local/bin/` when
 ```
 
 ## 🚨 Troubleshooting
+
+КРИТИЧЕСКАЯ ОШИБКА: Не удалось установить rustic
+Missing dependency. Install libfuse2:
+```bash
+sudo apt update
+sudo apt install libfuse2
+```
 
 ### S3 Issues
 ```bash

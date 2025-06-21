@@ -452,8 +452,7 @@ init_repository() {
 
     if rustic init \
         --repository "$repo_url" \
-        --password-file "$password_file" \
-        --set-encryption "$RUSTIC_ENCRYPTION"; then
+        --password-file "$password_file"; then
 
         log_message "✅ Репозиторий '$repo_name' инициализирован"
         return 0
